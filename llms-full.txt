@@ -1,0 +1,32 @@
+# HelmCraft — Full Technical & LLM Reference
+
+## Architecture Overview
+
+HelmCraft is a local-first CEO & CFO executive dashboard and cross-fleet telemetry engine built in pure Rust. It enforces `#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` across all crates:
+
+- `helmcraft-store`: Live multi-database SQLite reader and executive snapshot store with point-in-time historical records.
+- `helmcraft-core`: Executive board briefing synthesizer, cashflow forecaster, and risk analysis engine.
+- `helmcraft-mcp`: Stdio JSON-RPC FastMCP server & CLI binary (`helmcraft`).
+- `helmcraft-app`: Native desktop GUI executable (`helmcraft-app`) via `egui 0.37`.
+
+## MCP Tools Reference
+
+1. `helm_status`: Aggregates real-time executive dashboard KPIs across all craft business apps (Treasury, People, Ops Risk, Actions).
+2. `helm_board_briefing`: Generates a comprehensive executive board briefing document with risks and strategic recommendations.
+3. `helm_cashflow_forecast`: Projects cash runway and burn scenarios based on live receivables, subscriptions, and operating expenses.
+
+## Telemetry Sources
+
+Reads directly from local SQLite databases in read-only mode:
+- `billcraft.db`: MRR, ARR, accounts receivable, overdue invoices.
+- `spendcraft.db`: Travel and operational expenses.
+- `teamcraft.db`: FTE headcount and Austrian AZG compliance.
+- `hirecraft.db`: Open requisitions, active candidates, pending job offers.
+- `gaincraft.db`: Customer health scores, churn risks, active retention CTAs.
+- `taskcraft.db`: Active sprint issues, blocked tickets.
+- `assetcraft.db`: IT hardware fleet and unassigned inventory.
+
+## Configuration & Environment Variables
+
+- `HELMCRAFT_DB`: Path to SQLite database file (default: `%LOCALAPPDATA%\helmcraft\helmcraft.db`).
+- `CRAFT_BUS_DIR`: Root directory of atomic event bus (default: `%LOCALAPPDATA%\craft-biz-bus`).

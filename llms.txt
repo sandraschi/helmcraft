@@ -1,0 +1,5 @@
+# HelmCraft
+
+> Local-first sovereign CEO/CFO Executive Cockpit, Fleet Telemetry Radar, and Board Briefing Engine in pure Rust.
+
+- [Full LLM Reference](llms-full.txt): Comprehensive tools, architecture, and configuration documentation.
