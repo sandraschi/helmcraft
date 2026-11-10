@@ -1,0 +1,27 @@
+[package]
+name = "helmcraft-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Native egui desktop application for HelmCraft - Executive Cockpit & God's Eye View"
+
+[[bin]]
+name = "helmcraft-app"
+path = "src/main.rs"
+
+[dependencies]
+helmcraft-store = { path = "../helmcraft-store" }
+helmcraft-core = { path = "../helmcraft-core" }
+craft-biz = { workspace = true }
+craft-biz-ui = { workspace = true }
+eframe = { workspace = true }
+egui = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true

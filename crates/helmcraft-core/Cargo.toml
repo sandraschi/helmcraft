@@ -1,0 +1,19 @@
+[package]
+name = "helmcraft-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Executive intelligence and forecasting engine for HelmCraft"
+
+[dependencies]
+helmcraft-store = { path = "../helmcraft-store" }
+craft-biz = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
