@@ -1,0 +1,45 @@
+{
+  "manifest_version": "0.2",
+  "name": "helmcraft",
+  "display_name": "HelmCraft",
+  "version": "__VERSION__",
+  "description": "Native egui desktop application for HelmCraft - Executive Cockpit & God's Eye View",
+  "author": {
+    "name": "Sandra Schipal",
+    "url": "https://github.com/sandraschi"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sandraschi/helmcraft"
+  },
+  "license": "MIT OR Apache-2.0",
+  "server": {
+    "type": "binary",
+    "entry_point": "helmcraft.exe",
+    "mcp_config": {
+      "command": "${__dirname}/helmcraft.exe",
+      "args": [
+        "mcp"
+      ]
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "win32"
+    ]
+  },
+  "tools": [
+    {
+      "name": "helm_status",
+      "description": "Retrieve real-time executive dashboard KPIs across all 11 craft business apps (Treasury, People, Ops Risk, Actions)"
+    },
+    {
+      "name": "helm_board_briefing",
+      "description": "Generate comprehensive CEO/CFO executive board briefing and risk assessment"
+    },
+    {
+      "name": "helm_cashflow_forecast",
+      "description": "Calculate runway and burn projections based on current receivables, MRR, and OpEx"
+    }
+  ]
+}
