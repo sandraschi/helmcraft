@@ -11,22 +11,36 @@ HelmCraft is a local-first CEO & CFO executive dashboard and cross-fleet telemet
 
 ## MCP Tools Reference
 
-1. `helm_status`: Aggregates real-time executive dashboard KPIs across all craft business apps (Treasury, People, Ops Risk, Actions).
-2. `helm_board_briefing`: Generates a comprehensive executive board briefing document with risks and strategic recommendations.
-3. `helm_cashflow_forecast`: Projects cash runway and burn scenarios based on live receivables, subscriptions, and operating expenses.
+1. `helm_status`: Aggregates real-time executive dashboard KPIs across all local craft databases (Treasury, People, Ops Risk, Actions).
+2. `helm_refresh`: Re-reads every source database and returns the refreshed snapshot.
+3. `helm_board_briefing`: Generates a board briefing with risks, recommendations and telemetry provenance.
+4. `helm_cashflow_forecast`: Projects cash month by month from MRR, burn and open receivables.
+5. `helm_snapshot_save`: Saves the current executive snapshot to history.
+6. `helm_snapshot_list`: Lists saved snapshots, newest first.
+7. `helm_snapshot_delete`: Deletes one saved snapshot by id.
+8. `helm_export_briefing`: Writes the board briefing as Markdown.
+9. `helm_export_snapshots_csv`: Writes the snapshot history as CSV.
+10. `helm_set_cash`: Sets the treasury cash balance used for runway.
+11. `helm_sources`: Audits every source database (path, key table, rows, status).
 
 ## Telemetry Sources
 
 Reads directly from local SQLite databases in read-only mode:
 - `billcraft.db`: MRR, ARR, accounts receivable, overdue invoices.
 - `spendcraft.db`: Travel and operational expenses.
-- `teamcraft.db`: FTE headcount and Austrian AZG compliance.
+- `teamcraft.db`: FTE headcount, payroll and Austrian AZG compliance.
 - `hirecraft.db`: Open requisitions, active candidates, pending job offers.
-- `gaincraft.db`: Customer health scores, churn risks, active retention CTAs.
+- `gaincraft.db`: ARR, customer health scores, churn risks, active retention CTAs.
 - `taskcraft.db`: Active sprint issues, blocked tickets.
 - `assetcraft.db`: IT hardware fleet and unassigned inventory.
+- `contractcraft.db`: Contracts renewing within 90 days.
+- `deskcraft.db`: Open support tickets and first-response SLA breaches.
+- `buchcraft.db`: Bank-account closing balance (the treasury cash source) and bank movement.
+- `formcraft.db`: NPS responses.
 
 ## Configuration & Environment Variables
 
 - `HELMCRAFT_DB`: Path to SQLite database file (default: `%LOCALAPPDATA%\helmcraft\helmcraft.db`).
+- `HELMCRAFT_DATA_ROOT`: Directory holding the sibling app folders (default: `%LOCALAPPDATA%`).
+- `HELMCRAFT_CASH_CENTS`: Treasury cash override in cents; otherwise the BuchCraft bank balance or the app setting.
 - `CRAFT_BUS_DIR`: Root directory of atomic event bus (default: `%LOCALAPPDATA%\craft-biz-bus`).

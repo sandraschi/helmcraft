@@ -3,7 +3,7 @@
   "name": "helmcraft",
   "display_name": "HelmCraft",
   "version": "__VERSION__",
-  "description": "Native egui desktop application for HelmCraft - Executive Cockpit & God's Eye View",
+  "description": "Executive cockpit over the local craft databases: treasury, people, AZG compliance, delivery risk, board briefing and snapshots",
   "author": {
     "name": "Sandra Schipal",
     "url": "https://github.com/sandraschi"
@@ -31,15 +31,47 @@
   "tools": [
     {
       "name": "helm_status",
-      "description": "Retrieve real-time executive dashboard KPIs across all 11 craft business apps (Treasury, People, Ops Risk, Actions)"
+      "description": "Retrieve real-time executive dashboard KPIs across the local craft databases (Treasury, People, Ops Risk, Actions)"
+    },
+    {
+      "name": "helm_refresh",
+      "description": "Re-read every local craft database and return the refreshed snapshot"
     },
     {
       "name": "helm_board_briefing",
-      "description": "Generate comprehensive CEO/CFO executive board briefing and risk assessment"
+      "description": "Generate a CEO/CFO board briefing, risk radar and recommendations with provenance"
     },
     {
       "name": "helm_cashflow_forecast",
-      "description": "Calculate runway and burn projections based on current receivables, MRR, and OpEx"
+      "description": "Project cash month by month from MRR, burn and open receivables"
+    },
+    {
+      "name": "helm_snapshot_save",
+      "description": "Save the current executive snapshot to the history database"
+    },
+    {
+      "name": "helm_snapshot_list",
+      "description": "List saved executive snapshots, newest first"
+    },
+    {
+      "name": "helm_snapshot_delete",
+      "description": "Delete one saved snapshot by id"
+    },
+    {
+      "name": "helm_export_briefing",
+      "description": "Write the board briefing as Markdown"
+    },
+    {
+      "name": "helm_export_snapshots_csv",
+      "description": "Write the snapshot history as CSV"
+    },
+    {
+      "name": "helm_set_cash",
+      "description": "Set the treasury cash balance used for runway calculations"
+    },
+    {
+      "name": "helm_sources",
+      "description": "Audit every local craft database read by the cockpit (path, table, rows, status)"
     }
   ]
 }

@@ -5,6 +5,7 @@ use craft_biz::bus::Bus;
 use craft_biz_ui::app::{self, AppMenus, Frame, NavEntry, SuiteApp};
 use craft_biz_ui::help::{AppInfo, Doc};
 use craft_biz_ui::menu::{Item, Menu};
+use craft_biz_ui::shell::{self, UiSettings};
 use craft_biz_ui::table::{Cell, Col, Table, TableEvent};
 use craft_biz_ui::theme::{self, semibold, Tone};
 use craft_biz_ui::widgets::{self, Kpi};
@@ -746,15 +747,15 @@ impl HelmApp {
                 ),
                 Kpi::new("Monthly burn", money_short(t.burn_monthly_cents))
                     .note("Payroll + expenses", Tone::Neutral),
-                Kpi::new(
-                    "MRR / ARR",
-                    format!(
-                        "{} / {}",
-                        money_short(t.mrr_cents),
-                        money_short(t.arr_cents)
-                    ),
-                )
-                .note("GainCraft active ARR", Tone::Info),
+                Kpi::new("MRR", money_short(t.mrr_cents)).note("Active ARR / 12", Tone::Info),
+                Kpi::new("ARR", money_short(t.arr_cents))
+                    .note("GainCraft active accounts", Tone::Info),
+            ],
+        );
+        ui.add_space(8.0);
+        widgets::kpi_row(
+            ui,
+            &[
                 Kpi::new("AZG violations", snap.people.azg_violations.to_string()).note(
                     if snap.people.azg_violations > 0 {
                         "Uncleared - needs action"
@@ -767,12 +768,6 @@ impl HelmApp {
                         Tone::Ok
                     },
                 ),
-            ],
-        );
-        ui.add_space(8.0);
-        widgets::kpi_row(
-            ui,
-            &[
                 Kpi::new("Headcount", format!("{} FTE", snap.people.headcount_fte)).note(
                     format!("{} open requisitions", snap.people.open_requisitions),
                     Tone::Neutral,
@@ -792,14 +787,6 @@ impl HelmApp {
                 .note(
                     "Red churn band",
                     if snap.ops_risk.at_risk_accounts > 0 {
-                        Tone::Warn
-                    } else {
-                        Tone::Ok
-                    },
-                ),
-                Kpi::new("Blocked issues", snap.ops_risk.blocked_issues.to_string()).note(
-                    format!("{} active issues", snap.ops_risk.active_issues),
-                    if snap.ops_risk.blocked_issues > 0 {
                         Tone::Warn
                     } else {
                         Tone::Ok
@@ -1016,23 +1003,38 @@ impl HelmApp {
                             ui,
                             &values,
                             egui::vec2(ui.available_width().min(360.0), 54.0),
-                            if self.forecast.zero_cash_month.is_some() {
+                            if !self.forecast.cash_configured {
+                                Tone::Warn
+                            } else if self.forecast.zero_cash_month.is_some() {
                                 Tone::Danger
                             } else {
                                 Tone::Ok
                             },
                         );
-                        match self.forecast.zero_cash_month {
-                            Some(m) => ui.label(
-                                RichText::new(format!("Cash reaches zero in month {m}.")).color(
-                                    theme::tone_colors(Tone::Danger, ui.visuals().dark_mode).0,
+                        if !self.forecast.cash_configured {
+                            ui.label(
+                                RichText::new(
+                                    "Cash is not configured, so this line starts at zero. Set the balance above for a runway scenario.",
+                                )
+                                .color(theme::tone_colors(Tone::Warn, ui.visuals().dark_mode).0),
+                            );
+                        } else {
+                            match self.forecast.zero_cash_month {
+                                Some(m) => ui.label(
+                                    RichText::new(format!("Cash reaches zero in month {m}."))
+                                        .color(
+                                            theme::tone_colors(Tone::Danger, ui.visuals().dark_mode)
+                                                .0,
+                                        ),
                                 ),
-                            ),
-                            None => ui.label(
-                                RichText::new("Cash stays positive for the whole horizon.")
-                                    .color(theme::tone_colors(Tone::Ok, ui.visuals().dark_mode).0),
-                            ),
-                        };
+                                None => ui.label(
+                                    RichText::new("Cash stays positive for the whole horizon.")
+                                        .color(
+                                            theme::tone_colors(Tone::Ok, ui.visuals().dark_mode).0,
+                                        ),
+                                ),
+                            };
+                        }
                         for note in &self.forecast.notes {
                             ui.label(
                                 RichText::new(format!("- {note}"))
@@ -1804,7 +1806,59 @@ impl HelmApp {
 }
 
 fn main() -> std::process::ExitCode {
-    app::main_with(default_db(), open, "helm_refresh")
+    use std::process::ExitCode;
+    let args = match app::Args::parse() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{e}");
+            return if e == app::HELP {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            };
+        }
+    };
+    let db = args.db.clone().unwrap_or_else(default_db);
+    if let Some(parent) = db.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let settings_file = shell::settings_path(&db);
+    if !settings_file.exists() {
+        let prefs = UiSettings {
+            lang: "en".into(),
+            ..UiSettings::default()
+        };
+        let _ = prefs.save(&settings_file);
+    }
+    let application = match open(&db) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("cannot open {}: {e}", db.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut sh = app::Shell::new(application, Some(settings_file))
+        .with_args(&args)
+        .with_opener(db.clone(), open);
+    if args.smoke {
+        return match sh.smoke() {
+            Ok(v) => {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("smoke: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    match sh.run(args.size) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1864,5 +1918,29 @@ mod tests {
         assert_eq!(app.nav_entries().len(), VIEWS);
         assert_eq!(V_OVERVIEW, 0);
         assert_eq!(V_SETTINGS, VIEWS - 1);
+    }
+
+    #[test]
+    fn every_view_renders_in_both_themes() {
+        use egui_kittest::Harness;
+        for dark in [false, true] {
+            let shell = Shell::new(test_app(), None).with_args(&Args {
+                lang: Some("en".into()),
+                dark: Some(dark),
+                ..Args::default()
+            });
+            let mut h = Harness::builder()
+                .with_size([1440.0, 900.0])
+                .build_ui_state(|ui, sh: &mut Shell<HelmApp>| sh.show(ui), shell);
+            for view in 0..VIEWS {
+                h.state_mut().view = view;
+                h.run_steps(2);
+                assert!(
+                    h.state().last_error.is_none(),
+                    "view {view} dark={dark}: {:?}",
+                    h.state().last_error
+                );
+            }
+        }
     }
 }

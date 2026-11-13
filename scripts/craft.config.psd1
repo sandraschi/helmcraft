@@ -7,7 +7,7 @@
     Display     = 'HelmCraft'
     AppPackage  = 'helmcraft-app'
     AppBin      = 'helmcraft-app'
-    AppSmoke    = @()
+    AppSmoke    = @('--smoke')
     CliPackage  = 'helmcraft-mcp'
     CliBin      = 'helmcraft'
     CliSmoke    = @('status')

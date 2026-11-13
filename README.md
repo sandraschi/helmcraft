@@ -1,4 +1,4 @@
-# HelmCraft 🧭
+# HelmCraft
 
 ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)
 ![Rust 1.90+](https://img.shields.io/badge/rust-1.90%2B-orange?logo=rust)
@@ -7,33 +7,67 @@
 
 **Local-first sovereign CEO & CFO Executive Cockpit, Fleet Telemetry Radar, and Board Briefing Engine.**
 
-The "God's Eye View" executive radar aggregating live operational, financial, and compliance state across all 11 craft business applications.
+Reads the sibling craft databases directly (read-only) and turns them into a
+navigable executive cockpit: treasury and runway, people and AZG compliance,
+delivery risk, board briefing and snapshot history.
+
+## Preview
+
+![Executive overview, light theme](docs/screenshots/overview-light.png)
+
+![Treasury and runway, dark theme](docs/screenshots/treasury-dark.png)
 
 ## Features
 
-- **Live Multi-Database Telemetry**: Direct read-only SQLite cross-querying across `billcraft.db`, `spendcraft.db`, `teamcraft.db`, `hirecraft.db`, `gaincraft.db`, `taskcraft.db`, and `assetcraft.db`.
-- **Key Executive KPIs**:
-  - **Treasury & Runway**: Cash is the closing balance of BuchCraft's bank account (default 2800) when that book is real. A demo ledger is ignored. Otherwise the figure is the app setting or `HELMCRAFT_CASH_CENTS`. Monthly burn, runway, ARR/MRR, receivables, and overdue amounts are read from the sibling databases. The sum of `bank_tx` is movement, and it is not the cash figure.
-  - **People & Organization**: Active FTE count, open requisitions, active candidate pipeline, pending offers.
-  - **Compliance Radar**: Austrian Arbeitszeitgesetz (AZG) statutory workweek and overtime violation tracking.
-  - **Customer & Delivery Risk**: Churn risk accounts, customer support SLA breaches, engineering blocked tasks.
-- **Board Briefing Generator**: Automatically synthesizes executive summaries, risk radars, and strategic board recommendations.
-- **Tri-Modal Interface**:
-  - **L1 CLI**: Instant executive status overview and snapshot capture.
-  - **L2 MCP**: Stdio FastMCP tools (`helm_status`, `helm_board_briefing`, `helm_cashflow_forecast`).
-  - **L3 GUI**: Real-time 3-column executive radar in `egui 0.37` with instant refresh.
+- **Nine navigable pages**: Overview, Treasury, People, Compliance, Risk &
+  Delivery, Briefing, Snapshot history, Data Sources, Settings. Switch from the
+  navigation rail, the View menu, or Alt+1..9.
+- **Craft Menu Bar Standard shell**: File, Edit, View, Cockpit, Window, Help;
+  command palette (Ctrl+K) over every tool with generated forms; dark/light
+  theme and Ctrl+wheel zoom persisted per user.
+- **Readable by default**: Segoe UI type scale (14.5 pt body, 21 pt headings),
+  high-contrast light and dark palettes, no grey-on-white text.
+- **Click-through**: KPI cards and executive action rows open the page that owns
+  the metric; tables are sortable and filterable.
+- **Live multi-database telemetry** (read-only SQLite):
+  - `billcraft.db`: receivables, overdue invoices, subscriptions.
+  - `spendcraft.db`: reimbursed expenses feeding monthly burn.
+  - `teamcraft.db`: active FTE, payroll, uncleared AZG violations.
+  - `hirecraft.db`: open requisitions, candidate pipeline, pending offers.
+  - `gaincraft.db`: active ARR, churn bands, renewals.
+  - `taskcraft.db`: active and blocked issues.
+  - `assetcraft.db`: unassigned hardware.
+  - `contractcraft.db`: contracts renewing within 90 days.
+  - `deskcraft.db`: open tickets and first-response SLA breaches.
+  - `buchcraft.db`: bank-account closing balance (treasury cash source).
+  - `formcraft.db`: NPS responses.
+- **Honest provenance**: a missing or empty source reads zero and is listed on
+  the Data Sources page and in `data_notes`; no invented fallbacks. Treasury cash
+  is BuchCraft's bank-account closing balance when that ledger is real, otherwise
+  the app setting or `HELMCRAFT_CASH_CENTS`, and the window says "not configured"
+  until one exists.
+- **Board briefing and snapshots**: generated summary, risk radar and
+  recommendations; Markdown export; snapshot save/list/delete with current-value
+  comparison; snapshot CSV export.
+- **Tri-modal interface**:
+  - **L1 CLI**: `helmcraft status`, `briefing`, `forecast`, `sources`, `set-cash`,
+    `save-snapshot`, `snapshots`, `export-briefing`, `export-snapshots`.
+  - **L2 MCP**: 11 stdio tools, including snapshots, exports, cash and source audit.
+  - **L3 GUI**: native `egui 0.37` cockpit via `helmcraft-app`.
 
 ## Architecture
 
-- `crates/helmcraft-store`: Live multi-database query aggregator and historical snapshot persistence.
-- `crates/helmcraft-core`: Executive briefing synthesizer, cashflow forecaster, board report generator.
-- `crates/helmcraft-mcp`: Stdio JSON-RPC MCP server & CLI binary (`helmcraft`).
-- `crates/helmcraft-app`: Native desktop GUI executable (`helmcraft-app`).
+- `crates/helmcraft-store`: read-only multi-database query aggregator, provenance,
+  settings and historical snapshot persistence.
+- `crates/helmcraft-core`: executive briefing synthesizer, cashflow forecaster,
+  board report renderer.
+- `crates/helmcraft-mcp`: stdio JSON-RPC MCP server and CLI binary (`helmcraft`).
+- `crates/helmcraft-app`: native desktop cockpit (`helmcraft-app`) on `craft-biz-ui`.
 
 ## Quick Start
 
 ```powershell
-# Run smoke tests
+# Run smoke tests (window smoke + CLI status)
 .\start.ps1 -Smoke
 
 # Launch native desktop app
