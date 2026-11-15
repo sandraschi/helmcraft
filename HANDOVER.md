@@ -8,6 +8,11 @@ tags: [helmcraft, executive-cockpit, egui, craft-biz-ui, tiers]
 # Handover - HelmCraft
 
 ## What Was Done
+- Added the Running Projects page backed by a TaskCraft rollup
+  (`running_projects`): per-project active/planned/done/blocked, open
+  milestones, nearest due milestone with progress and overdue flag. Overdue
+  milestones and blocked projects flow into risks, action items and briefing.
+- New `helm_projects` tool (MCP/CLI/palette/menu) and an Overview strip.
 - Replaced the static three-column window with the `craft-biz-ui` suite shell:
   menu bar, navigation rail, command palette, help suite, status bar, toasts.
 - Nine pages: Overview, Treasury, People, Compliance, Risk & Delivery, Briefing,

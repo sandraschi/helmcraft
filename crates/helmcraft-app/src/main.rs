@@ -20,11 +20,12 @@ const V_TREASURY: usize = 1;
 const V_PEOPLE: usize = 2;
 const V_COMPLIANCE: usize = 3;
 const V_RISK: usize = 4;
-const V_BRIEFING: usize = 5;
-const V_SNAPSHOTS: usize = 6;
-const V_SOURCES: usize = 7;
-const V_SETTINGS: usize = 8;
-const VIEWS: usize = 9;
+const V_PROJECTS: usize = 5;
+const V_BRIEFING: usize = 6;
+const V_SNAPSHOTS: usize = 7;
+const V_SOURCES: usize = 8;
+const V_SETTINGS: usize = 9;
+const VIEWS: usize = 10;
 
 fn default_db() -> PathBuf {
     if let Ok(p) = std::env::var("HELMCRAFT_DB") {
@@ -73,6 +74,8 @@ fn route_action(item: &str) -> usize {
         V_COMPLIANCE
     } else if item.starts_with("[Risk]") {
         V_RISK
+    } else if item.starts_with("[Projects]") {
+        V_PROJECTS
     } else if item.starts_with("[People]") {
         V_PEOPLE
     } else if item.starts_with("[Treasury]") {
@@ -110,6 +113,7 @@ struct HelmApp {
     blocked: Vec<BlockedIssue>,
     invoices: Vec<InvoiceRow>,
     renewals: Vec<RenewalRow>,
+    projects: Vec<RunningProject>,
     selected_snapshot: Option<i64>,
     cash_input: String,
     last_export: Option<String>,
@@ -133,6 +137,7 @@ impl HelmApp {
             blocked: Vec::new(),
             invoices: Vec::new(),
             renewals: Vec::new(),
+            projects: Vec::new(),
             selected_snapshot: None,
             cash_input: String::new(),
             last_export: None,
@@ -244,6 +249,7 @@ fn empty_snapshot() -> ExecutiveSnapshot {
         data_notes: Vec::new(),
         sources_read: 0,
         sources_total: 11,
+        running_projects: Vec::new(),
     }
 }
 
@@ -338,6 +344,11 @@ fn tools_json() -> Vec<Value> {
             "description": "Audit every local craft database read by the cockpit",
             "inputSchema": {"type": "object", "properties": {}}
         }),
+        json!({
+            "name": "helm_projects",
+            "description": "List tracked TaskCraft projects with delivery rollups (issues, milestones, progress)",
+            "inputSchema": {"type": "object", "properties": {}}
+        }),
     ]
 }
 
@@ -366,6 +377,7 @@ const COVERAGE: &[(&str, &str)] = &[
         "Settings page, Treasury page, Cockpit menu",
     ),
     ("helm_sources", "Data Sources page and Cockpit menu"),
+    ("helm_projects", "Projects page and Cockpit menu"),
 ];
 
 impl SuiteApp for HelmApp {
@@ -466,6 +478,11 @@ impl SuiteApp for HelmApp {
                 let health = self.store.source_health();
                 serde_json::to_value(health).map_err(|e| e.to_string())
             }
+            "helm_projects" => {
+                let projects = self.store.running_projects().map_err(|e| e.to_string())?;
+                self.projects = projects.clone();
+                serde_json::to_value(projects).map_err(|e| e.to_string())
+            }
             other => Err(format!("unknown tool: {other}")),
         }
     }
@@ -483,6 +500,7 @@ impl SuiteApp for HelmApp {
         self.blocked = self.store.blocked_issues().map_err(|e| e.to_string())?;
         self.invoices = self.store.open_invoices().map_err(|e| e.to_string())?;
         self.renewals = self.store.upcoming_renewals().map_err(|e| e.to_string())?;
+        self.projects = self.store.running_projects().map_err(|e| e.to_string())?;
         self.cash_input = self
             .store
             .configured_cash_cents()
@@ -506,6 +524,7 @@ impl SuiteApp for HelmApp {
             V_PEOPLE => self.view_people(ui, f),
             V_COMPLIANCE => self.view_compliance(ui, f),
             V_RISK => self.view_risk(ui, f),
+            V_PROJECTS => self.view_projects(ui, f),
             V_BRIEFING => self.view_briefing(ui, f),
             V_SNAPSHOTS => self.view_snapshots(ui, f),
             V_SOURCES => self.view_sources(ui, f),
@@ -598,6 +617,7 @@ impl SuiteApp for HelmApp {
                         json!({"months": 12}),
                     ),
                     Item::run("Audit Data Sources", "helm_sources", json!({})),
+                    Item::run("Running Projects", "helm_projects", json!({})),
                     Item::sep(),
                     Item::form("Set Treasury Cash...", "helm_set_cash", &[]),
                     Item::form(
@@ -696,6 +716,14 @@ impl HelmApp {
                 .badge(self.snapshot.people.azg_violations, Tone::Danger),
             NavEntry::new("\u{25B2}", "Risk & Delivery").badge(
                 self.snapshot.ops_risk.at_risk_accounts + self.snapshot.ops_risk.blocked_issues,
+                Tone::Warn,
+            ),
+            NavEntry::new("\u{25A4}", "Projects").badge(
+                self.projects
+                    .iter()
+                    .map(|p| p.blocked_issues.max(0))
+                    .sum::<i64>()
+                    .max(0) as usize,
                 Tone::Warn,
             ),
             NavEntry::new("\u{2261}", "Briefing").group("Board"),
@@ -809,11 +837,42 @@ impl HelmApp {
             if ui.button("Risk & Delivery ->").clicked() {
                 f.goto(V_RISK);
             }
+            if ui.button("Projects ->").clicked() {
+                f.goto(V_PROJECTS);
+            }
             if ui.button("Board briefing ->").clicked() {
                 f.goto(V_BRIEFING);
             }
         });
 
+        ui.add_space(10.0);
+        let projects = self.projects.clone();
+        widgets::section(ui, "Running projects", Some(projects.len()));
+        widgets::card(ui, |ui| {
+            if projects.is_empty() {
+                ui.label("No tracked TaskCraft projects.");
+            } else {
+                for project in projects.iter().take(4) {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("{} - {}", project.key, project.name));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            widgets::pill(
+                                ui,
+                                &format!("{:.0}%", project.progress_pct),
+                                if project.blocked_issues > 0 {
+                                    Tone::Danger
+                                } else {
+                                    Tone::Ok
+                                },
+                            );
+                        });
+                    });
+                }
+                if ui.button("Open projects ->").clicked() {
+                    f.goto(V_PROJECTS);
+                }
+            }
+        });
         ui.add_space(10.0);
         ui.columns(2, |cols| {
             cols[0].vertical(|ui| {
@@ -1431,6 +1490,124 @@ impl HelmApp {
             widgets::empty_state(ui, "No renewals due", "No terms end in the next 90 days.");
         } else {
             let _ = Table::new("helm_renewals", &cols, &rows).show(ui);
+        }
+    }
+
+    fn view_projects(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
+        let open: i64 = self.projects.iter().map(|p| p.active_issues).sum();
+        let blocked: i64 = self.projects.iter().map(|p| p.blocked_issues).sum();
+        let milestones: i64 = self.projects.iter().map(|p| p.open_milestones).sum();
+        widgets::page_header(
+            ui,
+            "Running projects",
+            "Delivery state from TaskCraft: projects, milestones and blocked work. Planning happens in TaskCraft; this page only reports.",
+            |ui| {
+                if ui.button("Projects to result").clicked() {
+                    f.run_show("helm_projects", json!({}));
+                }
+                if ui.button("Refresh").clicked() {
+                    f.run("Telemetry refreshed", "helm_refresh", json!({}));
+                }
+            },
+        );
+        widgets::kpi_row(
+            ui,
+            &[
+                Kpi::new("Tracked projects", self.projects.len().to_string())
+                    .note("TaskCraft projects", Tone::Info),
+                Kpi::new("Issues in flight", open.to_string())
+                    .note("todo / in progress / in review", Tone::Accent),
+                Kpi::new("Open milestones", milestones.to_string())
+                    .note("Across projects", Tone::Neutral),
+                Kpi::new("Blocked issues", blocked.to_string()).note(
+                    if blocked > 0 {
+                        "Needs unblocking"
+                    } else {
+                        "Nothing stuck"
+                    },
+                    if blocked > 0 { Tone::Danger } else { Tone::Ok },
+                ),
+            ],
+        );
+        ui.add_space(10.0);
+        if self.projects.is_empty() {
+            widgets::empty_state(
+                ui,
+                "No tracked projects",
+                "TaskCraft has no projects, or taskcraft.db is missing.",
+            );
+            return;
+        }
+        let projects = self.projects.clone();
+        for project in &projects {
+            widgets::card(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("{} - {}", project.key, project.name))
+                            .family(semibold())
+                            .size(16.0),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        widgets::pill(
+                            ui,
+                            &format!("{:.0}% done", project.progress_pct),
+                            if project.blocked_issues > 0 {
+                                Tone::Danger
+                            } else {
+                                Tone::Ok
+                            },
+                        );
+                    });
+                });
+                widgets::meter(
+                    ui,
+                    (project.progress_pct / 100.0).clamp(0.0, 1.0) as f32,
+                    320.0,
+                    Tone::Accent,
+                );
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "{} active / {} planned / {} done",
+                        project.active_issues, project.planned_issues, project.done_issues
+                    ));
+                    if project.blocked_issues > 0 {
+                        widgets::pill(
+                            ui,
+                            &format!("{} blocked", project.blocked_issues),
+                            Tone::Danger,
+                        );
+                    }
+                    if project.open_milestones > 0 {
+                        widgets::pill(
+                            ui,
+                            &format!("{} open milestone(s)", project.open_milestones),
+                            Tone::Info,
+                        );
+                    }
+                });
+                match &project.next_milestone {
+                    Some(next) => {
+                        let when = if next.due_date.is_empty() {
+                            "unscheduled".to_string()
+                        } else if next.overdue {
+                            format!("due {} - OVERDUE", next.due_date)
+                        } else {
+                            format!("due {}", next.due_date)
+                        };
+                        ui.label(format!(
+                            "Next: '{}' ({when}; {:.0}% of {} issues)",
+                            next.title, next.progress_pct, next.issues_total
+                        ));
+                    }
+                    None => {
+                        ui.label(
+                            RichText::new("No open milestone.")
+                                .color(theme::current(ui.ctx()).text_weak),
+                        );
+                    }
+                }
+            });
+            ui.add_space(6.0);
         }
     }
 
