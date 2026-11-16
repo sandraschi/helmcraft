@@ -1,9 +1,23 @@
 # HelmCraft
 
+## Screenshots, Demo Videos & Walkthroughs
+
+> **Under Construction:** Full `egui` screenshots, demo videos, and interactive walkthroughs are currently under construction.
+
 ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)
 ![Rust 1.90+](https://img.shields.io/badge/rust-1.90%2B-orange?logo=rust)
 ![MCP stdio](https://img.shields.io/badge/MCP-stdio-purple)
 ![ArtCraft harness](https://img.shields.io/badge/ArtCraft-harness-green)
+
+## Install
+
+Tell Cursor, Claude, Antigravity, or OpenCode: **Install this.**
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-craft.ps1
+```
+
+Installs the Windows app, the CLI, and the MCP bundle.
 
 **Local-first sovereign CEO & CFO Executive Cockpit, Fleet Telemetry Radar, and Board Briefing Engine.**
 
@@ -17,11 +31,13 @@ delivery risk, board briefing and snapshot history.
 
 ![Treasury and runway, dark theme](docs/screenshots/treasury-dark.png)
 
+![Running projects](docs/screenshots/projects.png)
+
 ## Features
 
 - **Nine navigable pages**: Overview, Treasury, People, Compliance, Risk &
-  Delivery, Briefing, Snapshot history, Data Sources, Settings. Switch from the
-  navigation rail, the View menu, or Alt+1..9.
+  Delivery, Projects, Briefing, Snapshot history, Data Sources, Settings.
+  Switch from the navigation rail, the View menu, or Alt+1..9.
 - **Craft Menu Bar Standard shell**: File, Edit, View, Cockpit, Window, Help;
   command palette (Ctrl+K) over every tool with generated forms; dark/light
   theme and Ctrl+wheel zoom persisted per user.
@@ -49,11 +65,23 @@ delivery risk, board briefing and snapshot history.
 - **Board briefing and snapshots**: generated summary, risk radar and
   recommendations; Markdown export; snapshot save/list/delete with current-value
   comparison; snapshot CSV export.
+
+## Project planning
+
+Planning itself lives in **TaskCraft**: tracked **projects**, each with
+**milestones** (due dates, open/closed) and **issues** (status, priority,
+estimate, assignee, milestone link, `blocks` relations), plus git sync that
+closes issues from commits. HelmCraft never writes to the plan — the
+**Projects** page only reports it: per-project active/planned/done/blocked
+counts, overall progress, open milestones and the nearest due milestone with its
+own progress. Overdue milestones and blocked projects flow into the risk radar,
+the action items and the board briefing automatically.
 - **Tri-modal interface**:
   - **L1 CLI**: `helmcraft status`, `briefing`, `forecast`, `sources`, `set-cash`,
     `save-snapshot`, `snapshots`, `export-briefing`, `export-snapshots`.
-  - **L2 MCP**: 11 stdio tools, including snapshots, exports, cash and source audit.
-  - **L3 GUI**: native `egui 0.37` cockpit via `helmcraft-app`.
+  - **L2 MCP**: 12 stdio tools, including snapshots, exports, cash, source audit
+    and running projects.
+  - **L3 GUI**: native `egui 0.37` cockpit via `helmcraft-app` with ten pages.
 
 ## Architecture
 
@@ -68,12 +96,24 @@ delivery risk, board briefing and snapshot history.
 
 ```powershell
 # Run smoke tests (window smoke + CLI status)
+
+## Screenshots, Demo Videos & Walkthroughs
+
+> **Under Construction:** Full `egui` screenshots, demo videos, and interactive walkthroughs are currently under construction.
 .\start.ps1 -Smoke
 
 # Launch native desktop app
+
+## Screenshots, Demo Videos & Walkthroughs
+
+> **Under Construction:** Full `egui` screenshots, demo videos, and interactive walkthroughs are currently under construction.
 .\start.ps1
 
 # Run MCP server on stdio
+
+## Screenshots, Demo Videos & Walkthroughs
+
+> **Under Construction:** Full `egui` screenshots, demo videos, and interactive walkthroughs are currently under construction.
 .\start.ps1 -Mcp
 ```
 
