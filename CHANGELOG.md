@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-11-13
 
 ### Added
+- Running Projects page: per-project delivery rollups from TaskCraft (active,
+  planned, done, blocked; open milestones; nearest due milestone with progress),
+  plus `helm_projects` MCP tool and `projects` CLI verb. Overdue milestones and
+  blocked projects feed the risk radar, action items and board briefing.
+
+### Added
 - Full Craft Menu Bar shell: File, Edit, View, Cockpit, Window and Help, with keyboard shortcuts and the five-dialog Help suite.
 - Nine navigable cockpit pages: Overview, Treasury, People, Compliance, Risk & Delivery, Briefing, Snapshots, Data Sources, Settings.
 - Click-through KPI and action-item navigation, command palette (Ctrl+K) over every tool, dark/light theme, Segoe UI type scale and Ctrl+wheel zoom.

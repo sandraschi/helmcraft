@@ -98,6 +98,41 @@ impl BoardBriefing {
         for rec in &self.key_recommendations {
             out.push_str(&format!("- {rec}\n"));
         }
+        out.push_str("\n## Running projects\n\n");
+        let projects = &self.snapshot.running_projects;
+        if projects.is_empty() {
+            out.push_str("- No tracked TaskCraft projects.\n");
+        } else {
+            for p in projects {
+                let next = p.next_milestone.as_ref().map_or_else(
+                    || "no open milestone".to_string(),
+                    |m| {
+                        format!(
+                            "next '{}' due {}{} ({:.0}% of {} issues)",
+                            m.title,
+                            if m.due_date.is_empty() {
+                                "unscheduled"
+                            } else {
+                                &m.due_date
+                            },
+                            if m.overdue { ", OVERDUE" } else { "" },
+                            m.progress_pct,
+                            m.issues_total
+                        )
+                    },
+                );
+                out.push_str(&format!(
+                    "- {} ({}): {:.1}% done, {} active / {} planned / {} blocked, {} open milestone(s); {next}\n",
+                    p.key,
+                    p.name,
+                    p.progress_pct,
+                    p.active_issues,
+                    p.planned_issues,
+                    p.blocked_issues,
+                    p.open_milestones
+                ));
+            }
+        }
         out.push_str("\n## Telemetry provenance\n\n");
         out.push_str(&format!(
             "{} of {} craft databases read.\n",
@@ -145,6 +180,23 @@ pub fn generate_board_briefing(store: &HelmStore) -> BoardBriefing {
     };
 
     let mut top_risks = Vec::new();
+    let projects = store.running_projects().unwrap_or_default();
+    for project in &projects {
+        if let Some(next) = &project.next_milestone {
+            if next.overdue {
+                top_risks.push(format!(
+                    "Schedule: project {} milestone '{}' is overdue (due {}).",
+                    project.key, next.title, next.due_date
+                ));
+            }
+        }
+        if project.blocked_issues > 0 {
+            top_risks.push(format!(
+                "Delivery: project {} has {} open blocked issue(s).",
+                project.key, project.blocked_issues
+            ));
+        }
+    }
     if t.overdue_cents > 0 {
         top_risks.push(format!(
             "Overdue receivables: {} needs dunning escalation.",
@@ -215,6 +267,16 @@ pub fn generate_board_briefing(store: &HelmStore) -> BoardBriefing {
         key_recommendations.push(
             "Resolve the blocking issues in TaskCraft before the next delivery review.".to_string(),
         );
+    }
+    let mut seen_project = false;
+    for project in &projects {
+        if project.blocked_issues > 0 && !seen_project {
+            key_recommendations.push(format!(
+                "Walk the {} board in TaskCraft: unblock or re-scope the stuck issues first.",
+                project.key
+            ));
+            seen_project = true;
+        }
     }
     if snap.ops_risk.expiring_contracts_90d > 0 {
         key_recommendations.push(

@@ -20,11 +20,12 @@ const V_TREASURY: usize = 1;
 const V_PEOPLE: usize = 2;
 const V_COMPLIANCE: usize = 3;
 const V_RISK: usize = 4;
-const V_BRIEFING: usize = 5;
-const V_SNAPSHOTS: usize = 6;
-const V_SOURCES: usize = 7;
-const V_SETTINGS: usize = 8;
-const VIEWS: usize = 9;
+const V_PROJECTS: usize = 5;
+const V_BRIEFING: usize = 6;
+const V_SNAPSHOTS: usize = 7;
+const V_SOURCES: usize = 8;
+const V_SETTINGS: usize = 9;
+const VIEWS: usize = 10;
 
 fn default_db() -> PathBuf {
     if let Ok(p) = std::env::var("HELMCRAFT_DB") {
@@ -73,6 +74,8 @@ fn route_action(item: &str) -> usize {
         V_COMPLIANCE
     } else if item.starts_with("[Risk]") {
         V_RISK
+    } else if item.starts_with("[Projects]") {
+        V_PROJECTS
     } else if item.starts_with("[People]") {
         V_PEOPLE
     } else if item.starts_with("[Treasury]") {
@@ -110,6 +113,7 @@ struct HelmApp {
     blocked: Vec<BlockedIssue>,
     invoices: Vec<InvoiceRow>,
     renewals: Vec<RenewalRow>,
+    projects: Vec<RunningProject>,
     selected_snapshot: Option<i64>,
     cash_input: String,
     last_export: Option<String>,
@@ -133,6 +137,7 @@ impl HelmApp {
             blocked: Vec::new(),
             invoices: Vec::new(),
             renewals: Vec::new(),
+            projects: Vec::new(),
             selected_snapshot: None,
             cash_input: String::new(),
             last_export: None,
@@ -244,6 +249,7 @@ fn empty_snapshot() -> ExecutiveSnapshot {
         data_notes: Vec::new(),
         sources_read: 0,
         sources_total: 11,
+        running_projects: Vec::new(),
     }
 }
 
@@ -338,6 +344,11 @@ fn tools_json() -> Vec<Value> {
             "description": "Audit every local craft database read by the cockpit",
             "inputSchema": {"type": "object", "properties": {}}
         }),
+        json!({
+            "name": "helm_projects",
+            "description": "List tracked TaskCraft projects with delivery rollups (issues, milestones, progress)",
+            "inputSchema": {"type": "object", "properties": {}}
+        }),
     ]
 }
 
@@ -366,6 +377,7 @@ const COVERAGE: &[(&str, &str)] = &[
         "Settings page, Treasury page, Cockpit menu",
     ),
     ("helm_sources", "Data Sources page and Cockpit menu"),
+    ("helm_projects", "Projects page and Cockpit menu"),
 ];
 
 impl SuiteApp for HelmApp {
@@ -466,6 +478,11 @@ impl SuiteApp for HelmApp {
                 let health = self.store.source_health();
                 serde_json::to_value(health).map_err(|e| e.to_string())
             }
+            "helm_projects" => {
+                let projects = self.store.running_projects().map_err(|e| e.to_string())?;
+                self.projects = projects.clone();
+                serde_json::to_value(projects).map_err(|e| e.to_string())
+            }
             other => Err(format!("unknown tool: {other}")),
         }
     }
@@ -483,6 +500,7 @@ impl SuiteApp for HelmApp {
         self.blocked = self.store.blocked_issues().map_err(|e| e.to_string())?;
         self.invoices = self.store.open_invoices().map_err(|e| e.to_string())?;
         self.renewals = self.store.upcoming_renewals().map_err(|e| e.to_string())?;
+        self.projects = self.store.running_projects().map_err(|e| e.to_string())?;
         self.cash_input = self
             .store
             .configured_cash_cents()
@@ -496,8 +514,8 @@ impl SuiteApp for HelmApp {
         Ok(())
     }
 
-    fn nav(&self, _f: &Frame) -> Vec<NavEntry> {
-        self.nav_entries()
+    fn nav(&self, f: &Frame) -> Vec<NavEntry> {
+        self.nav_entries(f.lang_de)
     }
 
     fn view(&mut self, ui: &mut egui::Ui, view: usize, f: &mut Frame) {
@@ -506,6 +524,7 @@ impl SuiteApp for HelmApp {
             V_PEOPLE => self.view_people(ui, f),
             V_COMPLIANCE => self.view_compliance(ui, f),
             V_RISK => self.view_risk(ui, f),
+            V_PROJECTS => self.view_projects(ui, f),
             V_BRIEFING => self.view_briefing(ui, f),
             V_SNAPSHOTS => self.view_snapshots(ui, f),
             V_SOURCES => self.view_sources(ui, f),
@@ -598,6 +617,7 @@ impl SuiteApp for HelmApp {
                         json!({"months": 12}),
                     ),
                     Item::run("Audit Data Sources", "helm_sources", json!({})),
+                    Item::run("Running Projects", "helm_projects", json!({})),
                     Item::sep(),
                     Item::form("Set Treasury Cash...", "helm_set_cash", &[]),
                     Item::form(
@@ -684,25 +704,40 @@ impl SuiteApp for HelmApp {
 }
 
 impl HelmApp {
-    fn nav_entries(&self) -> Vec<NavEntry> {
+    fn nav_entries(&self, de: bool) -> Vec<NavEntry> {
+        let tr = |german: &'static str, english: &'static str| {
+            if de {
+                german
+            } else {
+                english
+            }
+        };
         let entries = vec![
-            NavEntry::new("\u{25C6}", "Overview").group("Cockpit"),
-            NavEntry::new("\u{20AC}", "Treasury").badge(
+            NavEntry::new("\u{25C6}", tr("Übersicht", "Overview")).group(tr("Lage", "Cockpit")),
+            NavEntry::new("\u{20AC}", tr("Kasse", "Treasury")).badge(
                 self.snapshot.treasury.overdue_cents.max(0) as usize,
                 Tone::Warn,
             ),
-            NavEntry::new("\u{25CF}", "People"),
-            NavEntry::new("\u{00A7}", "Compliance")
+            NavEntry::new("\u{25CF}", tr("Personal", "People")),
+            NavEntry::new("\u{00A7}", tr("Compliance", "Compliance"))
                 .badge(self.snapshot.people.azg_violations, Tone::Danger),
-            NavEntry::new("\u{25B2}", "Risk & Delivery").badge(
+            NavEntry::new("\u{25B2}", tr("Risiko & Lieferung", "Risk & Delivery")).badge(
                 self.snapshot.ops_risk.at_risk_accounts + self.snapshot.ops_risk.blocked_issues,
                 Tone::Warn,
             ),
-            NavEntry::new("\u{2261}", "Briefing").group("Board"),
-            NavEntry::new("\u{25A3}", "Snapshots")
+            NavEntry::new("\u{25A4}", tr("Projekte", "Projects")).badge(
+                self.projects
+                    .iter()
+                    .map(|p| p.blocked_issues.max(0))
+                    .sum::<i64>()
+                    .max(0) as usize,
+                Tone::Warn,
+            ),
+            NavEntry::new("\u{2261}", tr("Briefing", "Briefing")).group(tr("Vorstand", "Board")),
+            NavEntry::new("\u{25A3}", tr("Momentaufnahmen", "Snapshots"))
                 .badge(self.snapshot_total.max(0) as usize, Tone::Neutral),
-            NavEntry::new("\u{25A6}", "Data Sources").group("System"),
-            NavEntry::new("\u{2699}", "Settings"),
+            NavEntry::new("\u{25A6}", tr("Datenquellen", "Data Sources")).group(tr("System", "System")),
+            NavEntry::new("\u{2699}", tr("Einstellungen", "Settings")),
         ];
         debug_assert_eq!(entries.len(), VIEWS);
         entries
@@ -713,8 +748,11 @@ impl HelmApp {
         let t = &snap.treasury;
         widgets::page_header(
             ui,
-            "Executive overview",
-            "Live read-only telemetry from the local craft databases.",
+            f.t("Lagebild", "Executive overview"),
+            f.t(
+                "Schreibgeschützte Messwerte aus den lokalen Craft-Datenbanken.",
+                "Live read-only telemetry from the local craft databases.",
+            ),
             |ui| {
                 if widgets::primary(ui, "Refresh telemetry").clicked() {
                     f.run("Telemetry refreshed", "helm_refresh", json!({}));
@@ -809,11 +847,42 @@ impl HelmApp {
             if ui.button("Risk & Delivery ->").clicked() {
                 f.goto(V_RISK);
             }
+            if ui.button("Projects ->").clicked() {
+                f.goto(V_PROJECTS);
+            }
             if ui.button("Board briefing ->").clicked() {
                 f.goto(V_BRIEFING);
             }
         });
 
+        ui.add_space(10.0);
+        let projects = self.projects.clone();
+        widgets::section(ui, "Running projects", Some(projects.len()));
+        widgets::card(ui, |ui| {
+            if projects.is_empty() {
+                ui.label("No tracked TaskCraft projects.");
+            } else {
+                for project in projects.iter().take(4) {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("{} - {}", project.key, project.name));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            widgets::pill(
+                                ui,
+                                &format!("{:.0}%", project.progress_pct),
+                                if project.blocked_issues > 0 {
+                                    Tone::Danger
+                                } else {
+                                    Tone::Ok
+                                },
+                            );
+                        });
+                    });
+                }
+                if ui.button("Open projects ->").clicked() {
+                    f.goto(V_PROJECTS);
+                }
+            }
+        });
         ui.add_space(10.0);
         ui.columns(2, |cols| {
             cols[0].vertical(|ui| {
@@ -879,8 +948,11 @@ impl HelmApp {
     fn view_treasury(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
         widgets::page_header(
             ui,
-            "Treasury & runway",
-            "Cash, burn, receivables and the forward projection.",
+            f.t("Kasse & Reichweite", "Treasury & runway"),
+            f.t(
+                "Kasse, Verbrauch, Forderungen und die Vorausschau.",
+                "Cash, burn, receivables and the forward projection.",
+            ),
             |ui| {
                 if ui.button("Save snapshot").clicked() {
                     f.run("Snapshot saved", "helm_snapshot_save", json!({}));
@@ -1129,8 +1201,11 @@ impl HelmApp {
     fn view_people(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
         widgets::page_header(
             ui,
-            "People & organization",
-            "Headcount, recruiting funnel and asset assignment.",
+            f.t("Personal & Organisation", "People & organization"),
+            f.t(
+                "Kopfzahl, Recruiting und Anlagenzuordnung.",
+                "Headcount, recruiting funnel and asset assignment.",
+            ),
             |ui| {
                 if ui.button("Refresh").clicked() {
                     f.run("Telemetry refreshed", "helm_refresh", json!({}));
@@ -1199,8 +1274,11 @@ impl HelmApp {
     fn view_compliance(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
         widgets::page_header(
             ui,
-            "Compliance radar (AZG)",
-            "Uncleared Austrian Arbeitszeitgesetz violations from TeamCraft.",
+            f.t("Compliance-Radar (AZG)", "Compliance radar (AZG)"),
+            f.t(
+                "Offene Verstöße gegen das Arbeitszeitgesetz aus TeamCraft.",
+                "Uncleared Austrian Arbeitszeitgesetz violations from TeamCraft.",
+            ),
             |ui| {
                 if ui.button("Refresh").clicked() {
                     f.run("Telemetry refreshed", "helm_refresh", json!({}));
@@ -1294,8 +1372,11 @@ impl HelmApp {
     fn view_risk(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
         widgets::page_header(
             ui,
-            "Risk & delivery",
-            "Churn risk, blocked work, renewals and support load.",
+            f.t("Risiko & Lieferung", "Risk & delivery"),
+            f.t(
+                "Abwanderung, blockierte Arbeit, Verlängerungen und Support.",
+                "Churn risk, blocked work, renewals and support load.",
+            ),
             |ui| {
                 if ui.button("Refresh").clicked() {
                     f.run("Telemetry refreshed", "helm_refresh", json!({}));
@@ -1434,11 +1515,135 @@ impl HelmApp {
         }
     }
 
+    fn view_projects(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
+        let open: i64 = self.projects.iter().map(|p| p.active_issues).sum();
+        let blocked: i64 = self.projects.iter().map(|p| p.blocked_issues).sum();
+        let milestones: i64 = self.projects.iter().map(|p| p.open_milestones).sum();
+        widgets::page_header(
+            ui,
+            f.t("Laufende Projekte", "Running projects"),
+            f.t(
+                "Lieferstand aus TaskCraft: Projekte, Meilensteine und blockierte Arbeit. Geplant wird in TaskCraft; diese Seite berichtet nur.",
+                "Delivery state from TaskCraft: projects, milestones and blocked work. Planning happens in TaskCraft; this page only reports.",
+            ),
+            |ui| {
+                if ui.button("Projects to result").clicked() {
+                    f.run_show("helm_projects", json!({}));
+                }
+                if ui.button("Refresh").clicked() {
+                    f.run("Telemetry refreshed", "helm_refresh", json!({}));
+                }
+            },
+        );
+        widgets::kpi_row(
+            ui,
+            &[
+                Kpi::new("Tracked projects", self.projects.len().to_string())
+                    .note("TaskCraft projects", Tone::Info),
+                Kpi::new("Issues in flight", open.to_string())
+                    .note("todo / in progress / in review", Tone::Accent),
+                Kpi::new("Open milestones", milestones.to_string())
+                    .note("Across projects", Tone::Neutral),
+                Kpi::new("Blocked issues", blocked.to_string()).note(
+                    if blocked > 0 {
+                        "Needs unblocking"
+                    } else {
+                        "Nothing stuck"
+                    },
+                    if blocked > 0 { Tone::Danger } else { Tone::Ok },
+                ),
+            ],
+        );
+        ui.add_space(10.0);
+        if self.projects.is_empty() {
+            widgets::empty_state(
+                ui,
+                "No tracked projects",
+                "TaskCraft has no projects, or taskcraft.db is missing.",
+            );
+            return;
+        }
+        let projects = self.projects.clone();
+        for project in &projects {
+            widgets::card(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("{} - {}", project.key, project.name))
+                            .family(semibold())
+                            .size(16.0),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        widgets::pill(
+                            ui,
+                            &format!("{:.0}% done", project.progress_pct),
+                            if project.blocked_issues > 0 {
+                                Tone::Danger
+                            } else {
+                                Tone::Ok
+                            },
+                        );
+                    });
+                });
+                widgets::meter(
+                    ui,
+                    (project.progress_pct / 100.0).clamp(0.0, 1.0) as f32,
+                    320.0,
+                    Tone::Accent,
+                );
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "{} active / {} planned / {} done",
+                        project.active_issues, project.planned_issues, project.done_issues
+                    ));
+                    if project.blocked_issues > 0 {
+                        widgets::pill(
+                            ui,
+                            &format!("{} blocked", project.blocked_issues),
+                            Tone::Danger,
+                        );
+                    }
+                    if project.open_milestones > 0 {
+                        widgets::pill(
+                            ui,
+                            &format!("{} open milestone(s)", project.open_milestones),
+                            Tone::Info,
+                        );
+                    }
+                });
+                match &project.next_milestone {
+                    Some(next) => {
+                        let when = if next.due_date.is_empty() {
+                            "unscheduled".to_string()
+                        } else if next.overdue {
+                            format!("due {} - OVERDUE", next.due_date)
+                        } else {
+                            format!("due {}", next.due_date)
+                        };
+                        ui.label(format!(
+                            "Next: '{}' ({when}; {:.0}% of {} issues)",
+                            next.title, next.progress_pct, next.issues_total
+                        ));
+                    }
+                    None => {
+                        ui.label(
+                            RichText::new("No open milestone.")
+                                .color(theme::current(ui.ctx()).text_weak),
+                        );
+                    }
+                }
+            });
+            ui.add_space(6.0);
+        }
+    }
+
     fn view_briefing(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
         widgets::page_header(
             ui,
-            "Board briefing",
-            "Synthesized from the current snapshot; export it as Markdown.",
+            f.t("Vorstandsbriefing", "Board briefing"),
+            f.t(
+                "Aus der aktuellen Momentaufnahme. Export als Markdown.",
+                "Synthesized from the current snapshot; export it as Markdown.",
+            ),
             |ui| {
                 if widgets::primary(ui, "Regenerate").clicked() {
                     f.run("Briefing regenerated", "helm_board_briefing", json!({}));
@@ -1512,8 +1717,11 @@ impl HelmApp {
     fn view_snapshots(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
         widgets::page_header(
             ui,
-            "Snapshot history",
-            "Saved executive snapshots, with current-value comparison.",
+            f.t("Momentaufnahmen", "Snapshot history"),
+            f.t(
+                "Gespeicherte Lagebilder, verglichen mit den aktuellen Werten.",
+                "Saved executive snapshots, with current-value comparison.",
+            ),
             |ui| {
                 if widgets::primary(ui, "Save snapshot").clicked() {
                     f.run("Snapshot saved", "helm_snapshot_save", json!({}));
@@ -1632,8 +1840,11 @@ impl HelmApp {
     fn view_sources(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
         widgets::page_header(
             ui,
-            "Data sources",
-            "Every craft database is opened read-only; missing sources are reported, not faked.",
+            f.t("Datenquellen", "Data sources"),
+            f.t(
+                "Jede Craft-Datenbank wird nur gelesen. Fehlende Quellen werden gemeldet, nicht erfunden.",
+                "Every craft database is opened read-only; missing sources are reported, not faked.",
+            ),
             |ui| {
                 if widgets::primary(ui, "Re-audit").clicked() {
                     f.run("Sources audited", "helm_sources", json!({}));
@@ -1728,8 +1939,11 @@ impl HelmApp {
     fn view_settings(&mut self, ui: &mut egui::Ui, f: &mut Frame) {
         widgets::page_header(
             ui,
-            "Settings",
-            "Treasury input, storage locations and appearance controls.",
+            f.t("Einstellungen", "Settings"),
+            f.t(
+                "Kasseneingabe, Speicherorte und Darstellung.",
+                "Treasury input, storage locations and appearance controls.",
+            ),
             |ui| {
                 if ui.button("Refresh").clicked() {
                     f.run("Telemetry refreshed", "helm_refresh", json!({}));
@@ -1881,7 +2095,7 @@ mod tests {
     #[test]
     fn nav_lists_every_view() {
         let app = test_app();
-        assert_eq!(app.nav_entries().len(), VIEWS);
+        assert_eq!(app.nav_entries(false).len(), VIEWS);
     }
 
     #[test]
@@ -1915,7 +2129,7 @@ mod tests {
     #[test]
     fn every_view_state_is_available() {
         let app = test_app();
-        assert_eq!(app.nav_entries().len(), VIEWS);
+        assert_eq!(app.nav_entries(false).len(), VIEWS);
         assert_eq!(V_OVERVIEW, 0);
         assert_eq!(V_SETTINGS, VIEWS - 1);
     }

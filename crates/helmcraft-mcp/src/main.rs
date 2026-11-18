@@ -28,6 +28,7 @@ struct Cli {
 enum Commands {
     Status,
     Briefing,
+    Projects,
     Forecast {
         #[arg(default_value_t = 12)]
         months: u32,
@@ -197,6 +198,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Briefing => {
             println!("{}", briefing_markdown(&service));
         }
+        Commands::Projects => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &service
+                        .store()
+                        .running_projects()
+                        .map_err(|e| format!("{e}"))?
+                )?
+            );
+        }
         Commands::Forecast { months } => {
             println!(
                 "{}",
@@ -328,6 +340,11 @@ fn tools() -> Value {
             "name": "helm_sources",
             "description": "Audit every local craft database read by the cockpit (path, table, rows, status)",
             "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "helm_projects",
+            "description": "List tracked TaskCraft projects with delivery rollups (issues, milestones, progress)",
+            "inputSchema": { "type": "object", "properties": {} }
         }
     ])
 }
@@ -423,6 +440,13 @@ fn call_tool(service: &HelmService, name: &str, args: &Value) -> Result<Value, S
         "helm_sources" => {
             serde_json::to_value(service.store().source_health()).map_err(|e| e.to_string())
         }
+        "helm_projects" => serde_json::to_value(
+            service
+                .store()
+                .running_projects()
+                .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string()),
         other => Err(format!("Unknown tool: {other}")),
     }
 }
@@ -523,6 +547,7 @@ mod tests {
             "helm_export_snapshots_csv",
             "helm_set_cash",
             "helm_sources",
+            "helm_projects",
         ] {
             assert!(names.contains(&expected), "missing {expected}");
         }

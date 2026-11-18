@@ -72,6 +72,10 @@
     {
       "name": "helm_sources",
       "description": "Audit every local craft database read by the cockpit (path, table, rows, status)"
+    },
+    {
+      "name": "helm_projects",
+      "description": "List tracked TaskCraft projects with delivery rollups (issues, milestones, progress)"
     }
   ]
 }

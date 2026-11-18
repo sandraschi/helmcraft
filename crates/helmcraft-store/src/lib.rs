@@ -64,6 +64,9 @@ pub struct ExecutiveSnapshot {
     pub people: PeopleMetrics,
     pub ops_risk: OpsRiskMetrics,
     pub action_items: Vec<String>,
+    /// Delivery rollups over tracked TaskCraft projects. Read-only: planning
+    /// happens in TaskCraft, this only reports the state.
+    pub running_projects: Vec<RunningProject>,
     /// Human-readable provenance notes (missing sources, unset cash...).
     pub data_notes: Vec<String>,
     pub sources_read: usize,
@@ -116,6 +119,36 @@ pub struct BlockedIssue {
     pub status: String,
     pub priority: String,
     pub assignee: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectMilestone {
+    pub title: String,
+    pub due_date: String,
+    pub open: bool,
+    pub overdue: bool,
+    pub issues_total: i64,
+    pub issues_done: i64,
+    pub progress_pct: f64,
+}
+
+/// One tracked TaskCraft project with delivery rollups. Read-only: planning
+/// happens in TaskCraft, HelmCraft only reports the state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningProject {
+    pub key: String,
+    pub name: String,
+    /// todo / in_progress / in_review
+    pub active_issues: i64,
+    /// backlog, i.e. planned but not started
+    pub planned_issues: i64,
+    pub done_issues: i64,
+    pub blocked_issues: i64,
+    pub open_milestones: i64,
+    /// done / total across all issues, 0..100
+    pub progress_pct: f64,
+    /// nearest open milestone by due date, if any
+    pub next_milestone: Option<ProjectMilestone>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +219,10 @@ fn count(conn: &Connection, sql: &str) -> Option<i64> {
 
 fn count_f(conn: &Connection, sql: &str) -> Option<f64> {
     conn.query_row(sql, [], |r| r.get::<_, f64>(0)).ok()
+}
+
+fn today_str() -> String {
+    chrono::Utc::now().format("%Y-%m-%d").to_string()
 }
 
 enum BankBooks {
@@ -526,6 +563,121 @@ impl HelmStore {
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Delivery rollup over every tracked TaskCraft project and its
+    /// milestones. Read-only; issues are planned and edited in TaskCraft.
+    pub fn running_projects(&self) -> Result<Vec<RunningProject>, HelmStoreError> {
+        let Some(c) = read_only("taskcraft") else {
+            return Ok(Vec::new());
+        };
+        let mut stmt = c.prepare(
+            "SELECT p.key, p.name,
+                    COALESCE(SUM(CASE WHEN i.status IN ('todo', 'in_progress', 'in_review') THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN i.status = 'backlog' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN i.status IN ('done', 'canceled') THEN 1 ELSE 0 END), 0),
+                    COUNT(i.id)
+             FROM projects p LEFT JOIN issues i ON i.project_id = p.id
+             GROUP BY p.id ORDER BY p.key",
+        )?;
+        let project_rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, i64>(5)?,
+            ))
+        })?;
+        let project_rows = project_rows.collect::<Result<Vec<_>, _>>()?;
+
+        let mut blocked_by_project = std::collections::HashMap::new();
+        let mut bstmt = c.prepare(
+            "SELECT p.key, COUNT(DISTINCT t.id)
+             FROM relations r
+             JOIN issues t ON t.id = r.target_id
+             JOIN projects p ON p.id = t.project_id
+             WHERE r.kind = 'blocks'
+               AND t.status IN ('todo', 'in_progress', 'in_review')
+             GROUP BY p.key",
+        )?;
+        let blocked_rows =
+            bstmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        for row in blocked_rows {
+            let (key, n) = row?;
+            blocked_by_project.insert(key, n);
+        }
+
+        let mut mstmt = c.prepare(
+            "SELECT p.key, m.title, COALESCE(m.due_date, ''),
+                    m.open,
+                    COUNT(i.id),
+                    COALESCE(SUM(CASE WHEN i.status IN ('done', 'canceled') THEN 1 ELSE 0 END), 0)
+             FROM milestones m JOIN projects p ON p.id = m.project_id
+             LEFT JOIN issues i ON i.milestone_id = m.id
+             GROUP BY m.id
+             ORDER BY p.key, m.due_date IS NULL, m.due_date, m.title",
+        )?;
+        let milestone_rows = mstmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)? != 0,
+                r.get::<_, i64>(4)?,
+                r.get::<_, i64>(5)?,
+            ))
+        })?;
+        let mut milestones_by_project: std::collections::HashMap<String, Vec<ProjectMilestone>> =
+            std::collections::HashMap::new();
+        for row in milestone_rows {
+            let (key, title, due, open, total, done) = row?;
+            let overdue = open && !due.is_empty() && due.as_str() < today_str().as_str();
+            let progress = if total > 0 {
+                (done as f64 / total as f64 * 100.0 * 10.0).round() / 10.0
+            } else {
+                0.0
+            };
+            milestones_by_project
+                .entry(key)
+                .or_default()
+                .push(ProjectMilestone {
+                    title,
+                    due_date: due,
+                    open,
+                    overdue,
+                    issues_total: total,
+                    issues_done: done,
+                    progress_pct: progress,
+                });
+        }
+
+        Ok(project_rows
+            .into_iter()
+            .map(|(key, name, active, planned, done, total)| {
+                let empty: Vec<ProjectMilestone> = Vec::new();
+                let milestones = milestones_by_project.get(&key).unwrap_or(&empty);
+                let open_milestones = milestones.iter().filter(|m| m.open).count() as i64;
+                let next_milestone = milestones.iter().find(|m| m.open).cloned();
+                let progress = if total > 0 {
+                    (done as f64 / total as f64 * 100.0 * 10.0).round() / 10.0
+                } else {
+                    0.0
+                };
+                RunningProject {
+                    key: key.clone(),
+                    name,
+                    active_issues: active,
+                    planned_issues: planned,
+                    done_issues: done,
+                    blocked_issues: blocked_by_project.get(&key).copied().unwrap_or(0),
+                    open_milestones,
+                    progress_pct: progress,
+                    next_milestone,
+                }
+            })
+            .collect())
     }
 
     pub fn open_invoices(&self) -> Result<Vec<InvoiceRow>, HelmStoreError> {
@@ -907,6 +1059,22 @@ impl HelmStore {
                 "[Treasury] Runway is {runway_months:.1} months; below the six-month floor"
             ));
         }
+        for project in self.running_projects().unwrap_or_default() {
+            if let Some(next) = &project.next_milestone {
+                if next.overdue {
+                    action_items.push(format!(
+                        "[Projects] {} milestone '{}' overdue (due {})",
+                        project.key, next.title, next.due_date
+                    ));
+                }
+            }
+            if project.blocked_issues > 0 {
+                action_items.push(format!(
+                    "[Projects] {} has {} blocked issue(s) on the TaskCraft board",
+                    project.key, project.blocked_issues
+                ));
+            }
+        }
 
         ExecutiveSnapshot {
             timestamp: Utc::now(),
@@ -945,6 +1113,7 @@ impl HelmStore {
             data_notes: notes,
             sources_read: read,
             sources_total: SOURCES.len(),
+            running_projects: self.running_projects().unwrap_or_default(),
         }
     }
 }
@@ -1236,6 +1405,57 @@ mod tests {
         {
             return Err(format!("demo notes {:?}", demo.data_notes));
         }
+        drop(_guard);
+        let _ = fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn running_projects_roll_up_issues_and_milestones() -> Result<(), String> {
+        let _lock = env_lock();
+        let root = std::env::temp_dir().join(format!("helmcraft-proj-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        let _guard = DataRootGuard::set(&root);
+
+        write_source(
+            &root,
+            "taskcraft",
+            "CREATE TABLE projects (id INTEGER PRIMARY KEY, key TEXT NOT NULL, name TEXT NOT NULL, repo_path TEXT, last_synced_commit TEXT);
+             INSERT INTO projects VALUES (1, 'BC', 'BuchCraft roadmap', NULL, NULL);
+             CREATE TABLE milestones (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, title TEXT NOT NULL, due_date TEXT, open INTEGER NOT NULL DEFAULT 1);
+             INSERT INTO milestones VALUES (1, 1, 'v0.3', date('now', '-1 day'), 1);
+             INSERT INTO milestones VALUES (2, 1, 'v1.0', date('now', '+30 day'), 1);
+             CREATE TABLE issues (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, number INTEGER NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL, priority TEXT NOT NULL, milestone_id INTEGER, assignee TEXT);
+             INSERT INTO issues VALUES (1, 1, 1, 'a', 'todo', 'high', 1, NULL);
+             INSERT INTO issues VALUES (2, 1, 2, 'b', 'in_progress', 'high', 1, NULL);
+             INSERT INTO issues VALUES (3, 1, 3, 'c', 'done', 'low', 1, NULL);
+             INSERT INTO issues VALUES (4, 1, 4, 'd', 'backlog', 'low', 2, NULL);
+             CREATE TABLE relations (source_id INTEGER NOT NULL, target_id INTEGER NOT NULL, kind TEXT NOT NULL);
+             INSERT INTO relations VALUES (4, 1, 'blocks');",
+        )?;
+
+        let store = HelmStore::open_in_memory().map_err(|e| e.to_string())?;
+        let projects = store.running_projects().map_err(|e| e.to_string())?;
+        if projects.len() != 1 {
+            return Err(format!("projects {}", projects.len()));
+        }
+        let p = &projects[0];
+        if p.key != "BC" || p.active_issues != 2 || p.planned_issues != 1 || p.done_issues != 1 {
+            return Err(format!("counts {p:?}"));
+        }
+        if p.blocked_issues != 1 || p.open_milestones != 2 {
+            return Err(format!("blocked/milestones {p:?}"));
+        }
+        if (p.progress_pct - 25.0).abs() > 0.01 {
+            return Err(format!("progress {}", p.progress_pct));
+        }
+        let next = p.next_milestone.as_ref().ok_or("no next milestone")?;
+        if next.title != "v0.3" || !next.overdue || next.issues_done != 1 || next.issues_total != 3
+        {
+            return Err(format!("next {next:?}"));
+        }
+
         drop(_guard);
         let _ = fs::remove_dir_all(&root);
         Ok(())
