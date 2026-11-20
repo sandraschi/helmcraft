@@ -9,6 +9,12 @@
 ![MCP stdio](https://img.shields.io/badge/MCP-stdio-purple)
 ![ArtCraft harness](https://img.shields.io/badge/ArtCraft-harness-green)
 
+**Local-first sovereign CEO & CFO Executive Cockpit, Fleet Telemetry Radar, and Board Briefing Engine.**
+
+Reads the sibling craft databases directly (read-only) and turns them into a
+navigable executive cockpit: treasury and runway, people and AZG compliance,
+delivery risk, board briefing and snapshot history.
+
 ## Install
 
 Tell Cursor, Claude, Antigravity, or OpenCode: **Install this.**
@@ -18,12 +24,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-craft.ps1
 ```
 
 Installs the Windows app, the CLI, and the MCP bundle.
-
-**Local-first sovereign CEO & CFO Executive Cockpit, Fleet Telemetry Radar, and Board Briefing Engine.**
-
-Reads the sibling craft databases directly (read-only) and turns them into a
-navigable executive cockpit: treasury and runway, people and AZG compliance,
-delivery risk, board briefing and snapshot history.
 
 ## Preview
 
